@@ -8,10 +8,14 @@
 ### Modules
 from math import radians, cos, sin, sqrt, atan2
 from collections import namedtuple
+
 from vanilla import FloatingWindow, TextBox, EditText, Button, HorizontalLine, CheckBox
 from mojo.events import addObserver, removeObserver
 from mojo.UI import UpdateCurrentGlyphView
-from mojo.drawingTools import *
+from mojo.drawingTools import save, translate, stroke, lineJoin, miterLimit, strokeWidth
+from mojo.drawingTools import fill, newPath, moveTo, lineTo, closePath, drawPath, restore
+from mojo.drawingTools import drawGlyph, oval
+from mojo.roboFont import CurrentFont, CurrentGlyph
 from defcon.objects.glyph import addRepresentationFactory
 from fontTools.misc.bezierTools import calcCubicParameters
 
@@ -174,6 +178,7 @@ def simulateBorder(glyph, font, bodySize=90, bitSize=1):
                     pass
 
             # collecting circles
+            previousPt = None
             for indexPt, eachPt in enumerate(points):
                 if indexPt != 0 and eachPt != previousPt:
                     angle = atan2((eachPt.y - previousPt.y), (eachPt.x - previousPt.x))
@@ -380,5 +385,6 @@ class CAMsimulator(object):
 
 
 ### Instructions
-addRepresentationFactory(FACTORY_NAME, simulateBorder)
-cam = CAMsimulator()
+if __name__ == '__main__':
+    addRepresentationFactory(FACTORY_NAME, simulateBorder)
+    CAMsimulator()
