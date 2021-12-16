@@ -1,7 +1,7 @@
 extensionName: CAM Simulator
 repository: https://github.com/roberto-arista/cam-simulator
 extensionPath: build/CAMSimulator.roboFontExt
-description: A boilerplate extension which serves as starting point for creating your own extensions.
+description: A tool for visually inspect which sections of your drawings cannot be reproduced with a milling machine
 developer: Roberto Arista
 developerURL: https://github.com/roberto-arista
 tags: [ CAM contours drawing ]
