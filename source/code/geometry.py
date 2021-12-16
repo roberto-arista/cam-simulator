@@ -6,13 +6,7 @@
 
 # -- Modules -- #
 from math import sqrt, cos, radians, sin
-from collections import namedtuple
-
 from fontTools.misc.bezierTools import calcCubicParameters
-
-
-# -- Constants -- #
-Point = namedtuple('Point', 'x, y')
 
 
 # -- Objects, Functions, Procedures -- #
@@ -21,12 +15,12 @@ def calcPointOnBezier(a, b, c, d, tValue):
     bx, by = b
     cx, cy = c
     dx, dy = d
-    return Point(ax*tValue**3 + bx*tValue**2 + cx*tValue + dx,
-                 ay*tValue**3 + by*tValue**2 + cy*tValue + dy)
+    return (ax*tValue**3 + bx*tValue**2 + cx*tValue + dx,
+            ay*tValue**3 + by*tValue**2 + cy*tValue + dy)
 
 
 def calcDistance(pt1, pt2):
-    return sqrt((pt1.x - pt2.x)**2 + (pt1.y - pt2.y)**2)
+    return sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
 
 
 def collectPointsOnLine(pt1, pt2, distance):
@@ -35,9 +29,9 @@ def collectPointsOnLine(pt1, pt2, distance):
     points = []
     for eachStep in range(0, int(lineLength), distance):
         factor = eachStep/int(lineLength)
-        x = interpolate(pt1.x, pt2.x, factor)
-        y = interpolate(pt1.y, pt2.y, factor)
-        points.append(Point(x, y))
+        x = interpolate(pt1[0], pt2[0], factor)
+        y = interpolate(pt1[1], pt2[1], factor)
+        points.append((x, y))
     return points
 
 
@@ -86,8 +80,8 @@ def collectPointsOnBezierCurveWithFixedDistance(pt1, pt2, pt3, pt4, distance):
 
 def isTouching(offsetPoint, radius, glyph):
     for angle in range(0, 360, 10):
-        x = offsetPoint.x + cos(radians(angle))*radius
-        y = offsetPoint.y + sin(radians(angle))*radius
+        x = offsetPoint[0] + cos(radians(angle))*radius
+        y = offsetPoint[1] + sin(radians(angle))*radius
         if glyph.pointInside((x, y)) is True:
             return True
     return False

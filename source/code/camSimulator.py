@@ -16,8 +16,8 @@ from mojo.subscriber import unregisterGlyphEditorSubscriber
 from mojo.events import postEvent
 from fontTools.pens.basePen import BasePen
 
-from event import DEBUG_MODE, DEFAULT_KEY
-from geometry import Point, collectPointsOnLine, collectPointsOnBezierCurveWithFixedDistance, isTouching
+from events import DEBUG_MODE, DEFAULT_KEY
+from geometry import collectPointsOnLine, collectPointsOnBezierCurveWithFixedDistance, isTouching
 
 
 # -- Constants -- #
@@ -36,23 +36,28 @@ ERROR_COLOR = (1, 0, 0, .1)
 # -- Objects -- #
 class CAMSimulatorPen(BasePen):
 
-    points = []
+    contours = []
     prevPt = None
 
-    def __init__(self, glyphSet={}, bodySize=90, bitSize=1):
-        super().__init__(glyphSet)
-
-        self.bitUPM = font.info.unitsPerEm * bitSize * FROM_MM_TO_PT / bodySize
+    def __init__(self, glyph, bodySize, bitSize):
+        super().__init__({})
+        self.glyph = glyph
+        self.bitUPM = self.glyph.font.info.unitsPerEm * bitSize * FROM_MM_TO_PT / bodySize
         if DISTANCE*self.bitUPM > DISTANCE_THRESHOLD:
             self.relativeDistance = int(DISTANCE*self.bitUPM)
         else:
             self.relativeDistance = DISTANCE_THRESHOLD
 
     def moveTo(self, pt):
+        self.points = []
         self.prevPt = pt
 
     def lineTo(self, pt):
-        collectPointsOnLine(self.prevPt, pt, self.relativeDistance)
+        self.points.extend(
+            collectPointsOnLine(self.prevPt,
+                                pt,
+                                self.relativeDistance)
+        )
         self.prevPt = pt
 
     def curveTo(self, pt1, pt2, pt3):
@@ -66,102 +71,40 @@ class CAMSimulatorPen(BasePen):
         self.prevPt = pt3
 
     def closePath(self):
+        print(self.prevPt)
+        self.contours.append((self.prevPt.contour.clockwise, self.points))
         self.prevPt = None
 
     def calcCircles(self):
-        previewPoints = []
-        simulationPoints = []
-        errorPoints = []
+        self.previewOutlines = []
+        self.simulationCircles = []
+        self.errorCircles = []
+
         rotation = radians(-90)
         halfBitUPM = self.bitUPM/2
 
-        previousPt = None
-        for indexPt, eachPt in enumerate(self.points):
-            if indexPt != 0 and eachPt != previousPt:
-                angle = atan2((eachPt.y - previousPt.y), (eachPt.x - previousPt.x))
-                offsetPointTolerance = Point(eachPt.x + cos(angle + rotation) * (halfBitUPM + TOLERANCE),
-                                             eachPt.y + sin(angle + rotation) * (halfBitUPM + TOLERANCE))
+        for isClockwise, eachContour in self.contours:
+            previewContour = []
+            previousPt = None
+            for indexPt, eachPt in enumerate(self.points):
+                if indexPt != 0 and eachPt != previousPt:
+                    angle = atan2((eachPt[1] - previousPt[1]), (eachPt[0] - previousPt[0]))
+                    offsetPointTolerance = (eachPt[0] + cos(angle + rotation) * (halfBitUPM + TOLERANCE),
+                                            eachPt[1] + sin(angle + rotation) * (halfBitUPM + TOLERANCE))
 
-                offsetPointSharp = Point(eachPt.x + cos(angle + rotation) * (halfBitUPM),
-                                         eachPt.y + sin(angle + rotation) * (halfBitUPM))
+                    offsetPointSharp = (eachPt[0] + cos(angle + rotation) * (halfBitUPM),
+                                        eachPt[1] + sin(angle + rotation) * (halfBitUPM))
 
-                if not isTouching(offsetPointTolerance, halfBitUPM, glyph):
-                    simulationPoints.append((offsetPointTolerance.x-halfBitUPM, offsetPointTolerance.y-halfBitUPM, self.bitUPM, self.bitUPM))
-                    previewContour.append((offsetPointSharp.x-halfBitUPM, offsetPointSharp.y-halfBitUPM))
-                else:
-                    errorPoints.append((offsetPointTolerance.x-halfBitUPM, offsetPointTolerance.y-halfBitUPM, self.bitUPM, self.bitUPM))
-            previousPt = eachPt
-        previewPoints.append((eachContour.clockwise, previewContour))
+                    if not isTouching(offsetPointTolerance, halfBitUPM, self.glyph):
+                        self.simulationCircles.append((offsetPointTolerance[0]-halfBitUPM, offsetPointTolerance[1]-halfBitUPM, self.bitUPM))
+                        previewContour.append((offsetPointSharp[0]-halfBitUPM, offsetPointSharp[1]-halfBitUPM))
+                    else:
+                        self.errorCircles.append((offsetPointTolerance[0]-halfBitUPM, offsetPointTolerance[1]-halfBitUPM, self.bitUPM))
 
-
-# def simulateBorder(glyph, font, bodySize=90, bitSize=1):
-#     assert bodySize > 0 or bodySize is not None
-#     assert bitSize > 0 or bitSize is not None
-#     bitUPM = font.info.unitsPerEm * bitSize * FROM_MM_TO_PT / bodySize
-
-#     if DISTANCE*bitUPM > DISTANCE_THRESHOLD:
-#         relativeDistance = int(DISTANCE*bitUPM)
-#     else:
-#         relativeDistance = DISTANCE_THRESHOLD
-
-#     previewPoints = []
-#     simulationPoints = []
-#     errorPoints = []
-#     rotation = radians(-90)
-
-#     # defcon way of dealing with outlines
-#     for eachContour in glyph:
-#         previewContour = []
-
-#         for indexSegment, eachSegment in enumerate(eachContour.segments):
-#             for indexPoint, eachPoint in enumerate(eachSegment):
-
-#                 if indexSegment == 0:
-#                     pt1 = Point(eachContour.segments[indexSegment-1][-1].x, eachContour.segments[indexSegment-1][-1].y)
-
-#                 if eachPoint.segmentType == 'line':
-#                     pt2 = Point(eachPoint.x, eachPoint.y)
-#                     points = collectPointsOnLine(pt1, pt2, relativeDistance)
-#                     pt1 = pt2
-
-#                 elif eachPoint.segmentType == 'curve':
-#                     pt2 = Point(eachSegment[indexPoint-2].x, eachSegment[indexPoint-2].y)
-#                     pt3 = Point(eachSegment[indexPoint-1].x, eachSegment[indexPoint-1].y)
-#                     pt4 = Point(eachPoint.x, eachPoint.y)
-
-#                     points = collectPointsOnBezierCurveWithFixedDistance(pt1,
-#                                                                          pt2,
-#                                                                          pt3,
-#                                                                          pt4,
-#                                                                          relativeDistance)
-#                     pt1 = pt4
-
-#                 else:
-#                     pass
-
-#             # collecting circles
-#             previousPt = None
-#             for indexPt, eachPt in enumerate(points):
-#                 if indexPt != 0 and eachPt != previousPt:
-#                     angle = atan2((eachPt.y - previousPt.y), (eachPt.x - previousPt.x))
-#                     offsetPointTolerance = Point(eachPt.x + cos(angle + rotation) * (bitUPM/2 + TOLERANCE),
-#                                                  eachPt.y + sin(angle + rotation) * (bitUPM/2 + TOLERANCE))
-
-#                     offsetPointSharp = Point(eachPt.x + cos(angle + rotation) * (bitUPM/2),
-#                                              eachPt.y + sin(angle + rotation) * (bitUPM/2))
-
-#                     if isTouching(offsetPointTolerance, bitUPM/2., glyph) is False:
-#                         simulationPoints.append((offsetPointTolerance.x-bitUPM/2., offsetPointTolerance.y-bitUPM/2., bitUPM, bitUPM))
-#                         previewContour.append((offsetPointSharp.x-bitUPM/2., offsetPointSharp.y-bitUPM/2.))
-#                     else:
-#                         errorPoints.append((offsetPointTolerance.x-bitUPM/2., offsetPointTolerance.y-bitUPM/2., bitUPM, bitUPM))
-#                 previousPt = eachPt
-#             previewPoints.append((eachContour.clockwise, previewContour))
-
-#     return bitUPM, previewPoints, simulationPoints, errorPoints
+                previousPt = eachPt
+            self.previewOutlines.append((isClockwise, previewContour))
 
 
-### Class
 class CAMSimulatorController(WindowController):
 
     debug = DEBUG_MODE
@@ -311,11 +254,11 @@ class CAMSimulatorSubscriber(Subscriber):
     def build(self):
         glyphEditor = self.getGlyphEditor()
 
-        self.backgroundContainer = glyphEditor.getExtensionContainer(identifier=DEFAULT_KEY, position='background')
+        self.backgroundContainer = glyphEditor.extensionContainer(identifier=DEFAULT_KEY, location='background')
         self.simulationLayer = self.backgroundContainer.appendBaseSublayer()
         self.errorsLayer = self.backgroundContainer.appendBaseSublayer()
 
-        self.previewContainer = glyphEditor.getExtensionContainer(identifier=DEFAULT_KEY, position='preview')
+        self.previewContainer = glyphEditor.extensionContainer(identifier=DEFAULT_KEY, location='preview')
         self.previewLayer = self.previewContainer.appendPathSublayer()
 
     def started(self):
@@ -347,34 +290,36 @@ class CAMSimulatorSubscriber(Subscriber):
 
     def buildVisualization(self):
         glyph = self.getGlyphEditor().getGlyph()
-        pen = CAMSimulatorPen()
+        pen = CAMSimulatorPen(glyph=self.getGlyphEditor().getGlyph(),
+                              bodySize=self.controller.bodySize,
+                              bitSize=self.controller.bitSize)
         glyph.draw(pen)
         pen.calcCircles()
 
         # simulation and errors in the glyph editor
-        for eachOval in simulationPoints:
-            x, y, wdt, hgt = eachOval
+        for eachOval in pen.simulationCircles:
+            x, y, diameter = eachOval
             self.simulationLayer.appendOvalSublayer(
                 fillColor=CIRCLE_COLOR,
                 position=(x, y),
-                size=(wdt, hgt)
+                size=(diameter, diameter)
             )
-        for eachOval in errorPoints:
-            x, y, wdt, hgt = eachOval
+        for eachOval in pen.errorCircles:
+            x, y, diameter = eachOval
             self.simulationLayer.appendOvalSublayer(
                 fillColor=ERROR_COLOR,
                 position=(x, y),
-                size=(wdt, hgt)
+                size=(diameter, diameter)
             )
 
         # preview
-        for contourDirection, contourPoints in previewPoints:
+        for contourDirection, contourPoints in pen.previewPoints:
 
             contourLayer = self.previewLayer.appendPathSublayer(
                 strokeJoin='round',
                 position=(self.bitUPM/2, self.bitUPM/2),
                 strokeColor=WHITE,
-                strokeWidth=simulationPoints[0][2],
+                strokeWidth=diameter,
                 fillColor=WHITE if contourDirection else BLACK
             )
             contourLayerPen = contourLayer.getPen()
