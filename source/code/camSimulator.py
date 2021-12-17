@@ -6,7 +6,7 @@
 
 
 # -- Modules -- #
-from math import radians, cos, sin, atan2
+from math import radians
 
 from vanilla import FloatingWindow, TextBox, EditText, Button, HorizontalLine, CheckBox
 from mojo.roboFont import OpenWindow
@@ -14,10 +14,13 @@ from mojo.subscriber import WindowController, Subscriber
 from mojo.subscriber import registerGlyphEditorSubscriber
 from mojo.subscriber import unregisterGlyphEditorSubscriber
 from mojo.events import postEvent
+from defcon import registerRepresentationFactory
+from defcon.objects.glyph import Glyph
 from fontTools.pens.basePen import BasePen
 
 from events import DEBUG_MODE, DEFAULT_KEY
-from geometry import collectPointsOnLine, collectPointsOnBezierCurveWithFixedDistance, isTouching
+from geometry import collectPointsOnLine, collectPointsOnBezierCurveWithFixedDistance
+from geometry import projectPoint, isTouching, calcAngle
 
 
 # -- Constants -- #
@@ -34,75 +37,77 @@ ERROR_COLOR = (1, 0, 0, .1)
 
 
 # -- Objects -- #
-class CAMSimulatorPen(BasePen):
+class ContourBreakingPen(BasePen):
 
-    contours = []
-    prevPt = None
-
-    def __init__(self, glyph, bodySize, bitSize):
+    def __init__(self, bitUPM):
         super().__init__({})
-        self.glyph = glyph
-        self.bitUPM = self.glyph.font.info.unitsPerEm * bitSize * FROM_MM_TO_PT / bodySize
-        if DISTANCE*self.bitUPM > DISTANCE_THRESHOLD:
-            self.relativeDistance = int(DISTANCE*self.bitUPM)
+        if DISTANCE*bitUPM > DISTANCE_THRESHOLD:
+            self.relativeDistance = int(DISTANCE*bitUPM)
         else:
             self.relativeDistance = DISTANCE_THRESHOLD
 
     def moveTo(self, pt):
         self.points = []
-        self.prevPt = pt
+        self._firstPt = pt
+        self._prevPt = pt
 
     def lineTo(self, pt):
         self.points.extend(
-            collectPointsOnLine(self.prevPt,
+            collectPointsOnLine(self._prevPt,
                                 pt,
                                 self.relativeDistance)
         )
-        self.prevPt = pt
+        self._prevPt = pt
 
     def curveTo(self, pt1, pt2, pt3):
         self.points.extend(
-            collectPointsOnBezierCurveWithFixedDistance(self.prevPt,
+            collectPointsOnBezierCurveWithFixedDistance(self._prevPt,
                                                         pt1,
                                                         pt2,
                                                         pt3,
                                                         self.relativeDistance)
         )
-        self.prevPt = pt3
+        self._prevPt = pt3
 
     def closePath(self):
-        print(self.prevPt)
-        self.contours.append((self.prevPt.contour.clockwise, self.points))
-        self.prevPt = None
+        self.points.extend(
+            collectPointsOnLine(self._prevPt,
+                                self._firstPt,
+                                self.relativeDistance)
+        )
+        self._prevPt = None
 
-    def calcCircles(self):
-        self.previewOutlines = []
-        self.simulationCircles = []
-        self.errorCircles = []
 
-        rotation = radians(-90)
-        halfBitUPM = self.bitUPM/2
+FACTORY_NAME = f"{DEFAULT_KEY}.simulateBorder"
+def simulateBorder(glyph, bodySize=90, bitSize=1):
+    assert bodySize > 0 or bodySize is not None
+    assert bitSize > 0 or bitSize is not None
+    bitUPM = glyph.font.info.unitsPerEm * bitSize * FROM_MM_TO_PT / bodySize
 
-        for isClockwise, eachContour in self.contours:
-            previewContour = []
-            previousPt = None
-            for indexPt, eachPt in enumerate(self.points):
-                if indexPt != 0 and eachPt != previousPt:
-                    angle = atan2((eachPt[1] - previousPt[1]), (eachPt[0] - previousPt[0]))
-                    offsetPointTolerance = (eachPt[0] + cos(angle + rotation) * (halfBitUPM + TOLERANCE),
-                                            eachPt[1] + sin(angle + rotation) * (halfBitUPM + TOLERANCE))
+    simulationCircles = []
+    errorCircles = []
 
-                    offsetPointSharp = (eachPt[0] + cos(angle + rotation) * (halfBitUPM),
-                                        eachPt[1] + sin(angle + rotation) * (halfBitUPM))
+    for eachContour in glyph:
+        pen = ContourBreakingPen(bitUPM)
+        eachContour.draw(pen)
 
-                    if not isTouching(offsetPointTolerance, halfBitUPM, self.glyph):
-                        self.simulationCircles.append((offsetPointTolerance[0]-halfBitUPM, offsetPointTolerance[1]-halfBitUPM, self.bitUPM))
-                        previewContour.append((offsetPointSharp[0]-halfBitUPM, offsetPointSharp[1]-halfBitUPM))
-                    else:
-                        self.errorCircles.append((offsetPointTolerance[0]-halfBitUPM, offsetPointTolerance[1]-halfBitUPM, self.bitUPM))
+        previousPt = None
+        for indexPt, eachPt in enumerate(pen.points):
+            if indexPt != 0 and eachPt != previousPt:
+                angle = calcAngle(previousPt, eachPt)
 
-                previousPt = eachPt
-            self.previewOutlines.append((isClockwise, previewContour))
+                offsetPointTolerance = projectPoint(point=eachPt,
+                                                    angle=angle+radians(-90),
+                                                    distance=bitUPM/2 + TOLERANCE)
+
+                if not isTouching(offsetPointTolerance, bitUPM/2, glyph):
+                    simulationCircles.append((offsetPointTolerance[0]-bitUPM/2, offsetPointTolerance[1]-bitUPM/2))
+                else:
+                    errorCircles.append((offsetPointTolerance[0]-bitUPM/2, offsetPointTolerance[1]-bitUPM/2))
+
+            previousPt = eachPt
+
+    return bitUPM, simulationCircles, errorCircles
 
 
 class CAMSimulatorController(WindowController):
@@ -133,42 +138,42 @@ class CAMSimulatorController(WindowController):
         CheckBoxHeight = 22
 
         # init window
-        self.w = FloatingWindow((pluginWidth, pluginHeight), 'CAM Simulator')
+        self.w = FloatingWindow((pluginWidth, pluginHeight), "CAM Simulator")
 
         # body caption
         jumpingY = marginTop
         jumpingX = marginLft
         self.w.bodyCaption = TextBox((jumpingX, jumpingY, netWidth*.38, TextBoxHeight),
-                                     'bodySize:',
-                                     alignment='right')
+                                     "bodySize:",
+                                     alignment="right")
 
         # body edit
         jumpingX += netWidth*.42
         self.w.bodyEdit = EditText((jumpingX, jumpingY, netWidth*.2, EditTextHeight),
-                                   text=f'{self.bodySize}',
+                                   text=f"{self.bodySize}",
                                    callback=self.bodyEditCallback)
 
         # mm edit
         jumpingX += netWidth*.2
-        self.w.mm01Caption = TextBox((jumpingX+marginCol, jumpingY+4, netWidth*.2, TextBoxHeight), 'pt', sizeStyle='small')
+        self.w.mm01Caption = TextBox((jumpingX+marginCol, jumpingY+4, netWidth*.2, TextBoxHeight), "pt", sizeStyle="small")
 
         # bit caption
         jumpingY += EditTextHeight + marginRow
         jumpingX = marginLft
         self.w.bitCaption = TextBox((jumpingX, jumpingY, netWidth*.38, TextBoxHeight),
-                                    'bitSize:',
-                                    alignment='right')
+                                    "bitSize:",
+                                    alignment="right")
 
         # bit edit
         jumpingX += netWidth*.42
         self.w.bitEdit = EditText((jumpingX, jumpingY, netWidth*.2, EditTextHeight),
-                                  text=f'{self.bitSize}',
+                                  text=f"{self.bitSize}",
                                   callback=self.bitEditCallback)
 
         # mm edit
         jumpingX += netWidth*.2
-        self.w.mm02Caption = TextBox((jumpingX+marginCol, jumpingY+4, netWidth*.2, TextBoxHeight), 'mm',
-                                     sizeStyle='small')
+        self.w.mm02Caption = TextBox((jumpingX+marginCol, jumpingY+4, netWidth*.2, TextBoxHeight), "mm",
+                                     sizeStyle="small")
 
         # show simulation checkbox
         jumpingY += CheckBoxHeight + marginRow
@@ -192,7 +197,7 @@ class CAMSimulatorController(WindowController):
         jumpingY += marginRow
         jumpingX = marginLft
         self.w.previewButton = Button((jumpingX, jumpingY, netWidth, ButtonHeight),
-                                        'Preview On',
+                                        "Preview On",
                                         callback=self.previewButtonCallback)
 
         # adjust window height
@@ -215,34 +220,33 @@ class CAMSimulatorController(WindowController):
         try:
             self.bodySize = float(sender.get())
         except ValueError:
-            self.bodySize = None
-            self.w.bodyEdit.set('')
+            self.bodySize = 90
+            self.w.bodyEdit.set("90")
         postEvent(f"{DEFAULT_KEY}.bodySizeDidChange")
 
     def bitEditCallback(self, sender):
         try:
             self.bitSize = float(sender.get())
         except ValueError:
-            self.bitSize = None
-            self.w.bitEdit.set('')
+            self.bitSize = 1
+            self.w.bitEdit.set("1")
         postEvent(f"{DEFAULT_KEY}.bitSizeDidChange")
 
     def simulationCheckCallback(self, sender):
-        self.showSimulation = sender.get()
+        self.showSimulation = bool(sender.get())
         postEvent(f"{DEFAULT_KEY}.simulationVisibilityDidChange")
 
     def errorsCheckCallback(self, sender):
-        self.showErrors = sender.get()
+        self.showErrors = bool(sender.get())
         postEvent(f"{DEFAULT_KEY}.errorsVisibilityDidChange")
 
     def previewButtonCallback(self, sender):
-        if self.bitSize is not None and self.bodySize is not None:
-            if self.previewOn:
-                self.previewOn = False
-                self.w.previewButton.setTitle('Preview On')
-            else:
-                self.previewOn = True
-                self.w.previewButton.setTitle('Preview Off')
+        if self.previewOn:
+            self.previewOn = False
+            self.w.previewButton.setTitle("Preview On")
+        else:
+            self.previewOn = True
+            self.w.previewButton.setTitle("Preview Off")
         postEvent(f"{DEFAULT_KEY}.previewDidChange")
 
 
@@ -254,22 +258,31 @@ class CAMSimulatorSubscriber(Subscriber):
     def build(self):
         glyphEditor = self.getGlyphEditor()
 
-        self.backgroundContainer = glyphEditor.extensionContainer(identifier=DEFAULT_KEY, location='background')
+        self.backgroundContainer = glyphEditor.extensionContainer(identifier=DEFAULT_KEY, location="background")
+        self.backgroundContainer.setVisible(self.controller.previewOn)
         self.simulationLayer = self.backgroundContainer.appendBaseSublayer()
+        self.simulationLayer.setVisible(self.controller.showSimulation)
         self.errorsLayer = self.backgroundContainer.appendBaseSublayer()
-
-        self.previewContainer = glyphEditor.extensionContainer(identifier=DEFAULT_KEY, location='preview')
-        self.previewLayer = self.previewContainer.appendPathSublayer()
+        self.errorsLayer.setVisible(self.controller.showErrors)
 
     def started(self):
         self.buildVisualization()
 
     def destroy(self):
         self.backgroundContainer.clearSublayers()
-        self.previewContainer.clearSublayers()
 
+    def glyphEditorWillSetGlyph(self, info):
+        self.clearLayers()
+
+    glyphEditorDidSetGlyphDelay = 0.25
+    def glyphEditorDidSetGlyph(self, info):
+        if self.controller.previewOn:
+            self.buildVisualization()
+
+    glyphEditorGlyphDidChangeOutlineDelay = 0.25
     def glyphEditorGlyphDidChangeOutline(self, info):
-        self.buildVisualization()
+        if self.controller.previewOn:
+            self.buildVisualization()
 
     def bodySizeDidChange(self, info):
         self.buildVisualization()
@@ -278,66 +291,46 @@ class CAMSimulatorSubscriber(Subscriber):
         self.buildVisualization()
 
     def simulationVisibilityDidChange(self, info):
-        self.simulationLayer.setVisibility(self.controller.showSimulation)
+        self.simulationLayer.setVisible(self.controller.showSimulation)
 
     def errorsVisibilityDidChange(self, info):
-        self.errorsLayer.setVisibility(self.controller.showErrors)
+        self.errorsLayer.setVisible(self.controller.showErrors)
 
     def previewDidChange(self, info):
-        self.simulationLayer.setVisibility(self.controller.previewOn)
-        self.errorsLayer.setVisibility(self.controller.previewOn)
-        self.previewLayer.setVisibility(self.controller.previewOn)
+        if self.controller.previewOn:
+            self.buildVisualization()
+        self.backgroundContainer.setVisible(self.controller.previewOn)
+
+    def clearLayers(self):
+        self.simulationLayer.clearSublayers()
+        self.errorsLayer.clearSublayers()
 
     def buildVisualization(self):
-        glyph = self.getGlyphEditor().getGlyph()
-        pen = CAMSimulatorPen(glyph=self.getGlyphEditor().getGlyph(),
-                              bodySize=self.controller.bodySize,
-                              bitSize=self.controller.bitSize)
-        glyph.draw(pen)
-        pen.calcCircles()
+        self.clearLayers()
 
-        # simulation and errors in the glyph editor
-        for eachOval in pen.simulationCircles:
-            x, y, diameter = eachOval
+        glyph = self.getGlyphEditor().getGlyph()
+        data = glyph.getRepresentation(FACTORY_NAME,
+                                       bodySize=self.controller.bodySize,
+                                       bitSize=self.controller.bitSize)
+        bitUPM, simulationCircles, errorCircles = data
+
+        for eachOval in simulationCircles:
+            x, y = eachOval
             self.simulationLayer.appendOvalSublayer(
                 fillColor=CIRCLE_COLOR,
                 position=(x, y),
-                size=(diameter, diameter)
+                size=(bitUPM, bitUPM)
             )
-        for eachOval in pen.errorCircles:
-            x, y, diameter = eachOval
-            self.simulationLayer.appendOvalSublayer(
+        for eachOval in errorCircles:
+            x, y = eachOval
+            self.errorsLayer.appendOvalSublayer(
                 fillColor=ERROR_COLOR,
                 position=(x, y),
-                size=(diameter, diameter)
+                size=(bitUPM, bitUPM)
             )
-
-        # preview
-        for contourDirection, contourPoints in pen.previewPoints:
-
-            contourLayer = self.previewLayer.appendPathSublayer(
-                strokeJoin='round',
-                position=(self.bitUPM/2, self.bitUPM/2),
-                strokeColor=WHITE,
-                strokeWidth=diameter,
-                fillColor=WHITE if contourDirection else BLACK
-            )
-            contourLayerPen = contourLayer.getPen()
-            for indexPt, eachPt in enumerate(contourPoints):
-                x, y, = eachPt
-                if indexPt == 0:
-                    contourLayerPen.moveTo((x, y))
-                else:
-                    contourLayerPen.lineTo((x, y))
-            contourLayerPen.closePath()
-
-        self.previewLayer.appendPathSublayer(
-            fillColor=BLACK
-        )
-        glyph = self.getGlyphEditor().getGlyph()
-        self.previewLayer.setPath(glyph.getRepresentation("merz.CGPath"))
 
 
 # -- Instructions -- #
-if __name__ == '__main__':
+if __name__ == "__main__":
+    registerRepresentationFactory(Glyph, FACTORY_NAME, simulateBorder)
     OpenWindow(CAMSimulatorController)
