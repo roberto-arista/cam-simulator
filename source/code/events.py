@@ -15,10 +15,15 @@ DEFAULT_KEY = 'it.robertoArista.CAMSimulator'
 
 # -- Instructions -- #
 if __name__ == '__main__':
-    events = ['bodySizeDidChange', 'bitSizeDidChange', 'simulationVisibilityDidChange',
-              'errorsVisibilityDidChange', 'previewDidChange']
+    events = [
+        ('bodySizeDidChange', 0.25),
+        ('bitSizeDidChange', 0.25),
+        ('simulationVisibilityDidChange', 0),
+        ('errorsVisibilityDidChange', 0),
+        ('previewDidChange', 0.25),
+    ]
 
-    for methodName in events:
+    for methodName, delay in events:
         eventName = f"{DEFAULT_KEY}.{methodName}"
         if eventName not in getRegisteredSubscriberEvents():
             registerSubscriberEvent(
@@ -26,6 +31,6 @@ if __name__ == '__main__':
                 methodName=methodName,
                 lowLevelEventNames=[eventName],
                 dispatcher="roboFont",
-                delay=0,
+                delay=delay,
                 debug=DEBUG_MODE
             )
