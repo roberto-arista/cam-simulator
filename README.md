@@ -4,7 +4,7 @@ Visualize CNC limitations right in the glyph editor. [RoboFont](https://robofont
 
 ![a](imgs/a.jpg)
 
-The CAM Simulator is a RoboFont extension that I developed during [type]media](https://typemedia.org) to simplify the design of a CNC optimized typeface.
+The CAM Simulator is a RoboFont extension that I developed during [type\]media](https://typemedia.org) to simplify the design of a CNC optimized typeface.
 
 ![screenshots extension](imgs/screen.png)
 
