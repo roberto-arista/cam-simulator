@@ -32,8 +32,8 @@ DISTANCE_THRESHOLD = 4
 
 WHITE = (1, 1, 1, 1)
 BLACK = (0, 0, 0, 1)
-CIRCLE_COLOR = (0, 1, 0, .1)
-ERROR_COLOR = (1, 0, 0, .1)
+CIRCLE_COLOR = (0, 1, 0, .4)
+ERROR_COLOR = (1, 0, 0, .4)
 
 
 # -- Objects -- #
@@ -260,9 +260,14 @@ class CAMSimulatorSubscriber(Subscriber):
 
         self.backgroundContainer = glyphEditor.extensionContainer(identifier=DEFAULT_KEY, location="background")
         self.backgroundContainer.setVisible(self.controller.previewOn)
-        self.simulationLayer = self.backgroundContainer.appendBaseSublayer()
+        self.simulationLayer = self.backgroundContainer.appendPathSublayer(
+            fillColor=CIRCLE_COLOR
+        )
         self.simulationLayer.setVisible(self.controller.showSimulation)
-        self.errorsLayer = self.backgroundContainer.appendBaseSublayer()
+
+        self.errorsLayer = self.backgroundContainer.appendPathSublayer(
+            fillColor=ERROR_COLOR
+        )
         self.errorsLayer.setVisible(self.controller.showErrors)
 
     def started(self):
@@ -314,20 +319,15 @@ class CAMSimulatorSubscriber(Subscriber):
                                        bitSize=self.controller.bitSize)
         bitUPM, simulationCircles, errorCircles = data
 
+        simulationPen = self.simulationLayer.getPen()
         for eachOval in simulationCircles:
             x, y = eachOval
-            self.simulationLayer.appendOvalSublayer(
-                fillColor=CIRCLE_COLOR,
-                position=(x, y),
-                size=(bitUPM, bitUPM)
-            )
+            simulationPen.oval((x, y, bitUPM, bitUPM))
+
+        errorsPen = self.errorsLayer.getPen()
         for eachOval in errorCircles:
             x, y = eachOval
-            self.errorsLayer.appendOvalSublayer(
-                fillColor=ERROR_COLOR,
-                position=(x, y),
-                size=(bitUPM, bitUPM)
-            )
+            errorsPen.oval((x, y, bitUPM, bitUPM))
 
 
 # -- Instructions -- #
