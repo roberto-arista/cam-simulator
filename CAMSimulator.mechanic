@@ -1,10 +1,10 @@
 extensionName: CAM Simulator
 repository: https://github.com/roberto-arista/cam-simulator
 extensionPath: build/CAMSimulator.roboFontExt
-description: A tool for visually inspect which sections of your drawings cannot be reproduced with a milling machine
+description: Visualize CNC limitations right in the glyph editor
 developer: Roberto Arista
 developerURL: https://github.com/roberto-arista
-tags: [ CAM contours drawing ]
+tags: [ contours drawing ]
 infoPath: https://github.com/roberto-arista/cam-simulator/blob/master/build/CAMSimulator.roboFontExt/info.plist
 zipPath: https://github.com/roberto-arista/cam-simulator/archive/master.zip
 icon: https://github.com/roberto-arista/cam-simulator/raw/master/CAMSimulatorMechanicIcon.png
