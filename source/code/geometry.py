@@ -19,8 +19,16 @@ def calcPointOnBezier(a, b, c, d, tValue):
             ay*tValue**3 + by*tValue**2 + cy*tValue + dy)
 
 
+def calcAngle(pt1, pt2):
+    return atan2((pt2[1] - pt1[1]), (pt2[0] - pt1[0]))
+
+
 def calcDistance(pt1, pt2):
     return sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
+
+
+def projectPoint(point, angle, distance):
+    return (point[0] + cos(angle) * distance, point[1] + sin(angle) * distance)
 
 
 def collectPointsOnLine(pt1, pt2, distance):
