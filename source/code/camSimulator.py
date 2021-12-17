@@ -27,8 +27,8 @@ from geometry import projectPoint, isTouching, calcAngle
 FROM_MM_TO_PT = 2.834627813
 
 TOLERANCE = .1   # upm
-DISTANCE = .1    # percentage of bit radius
-DISTANCE_THRESHOLD = 4
+DISTANCE = .2    # percentage of bit radius
+DISTANCE_THRESHOLD = 6
 
 WHITE = (1, 1, 1, 1)
 BLACK = (0, 0, 0, 1)

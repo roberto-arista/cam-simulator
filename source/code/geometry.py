@@ -86,7 +86,7 @@ def collectPointsOnBezierCurveWithFixedDistance(pt1, pt2, pt3, pt4, distance):
     return cleanPoints
 
 
-def isTouching(offsetPoint, radius, glyph, angleStep=10):
+def isTouching(offsetPoint, radius, glyph, angleStep=15):
     for angle in range(0, 360, angleStep):
         x = offsetPoint[0] + cos(radians(angle))*radius
         y = offsetPoint[1] + sin(radians(angle))*radius
