@@ -5,6 +5,5 @@ description: Visualize CNC limitations right in the glyph editor
 developer: Roberto Arista
 developerURL: https://github.com/roberto-arista
 tags: [ contours drawing ]
-infoPath: https://raw.githubusercontent.com/roberto-arista/cam-simulator/blob/master/build/CAMSimulator.roboFontExt/info.plist
-zipPath: https://github.com/roberto-arista/cam-simulator/archive/master.zip
-icon: https://raw.githubusercontent.com//roberto-arista/cam-simulator/raw/master/CAMSimulatorMechanicIcon.png
+icon: https://raw.githubusercontent.com/roberto-arista/cam-simulator/main/CAMSimulatorMechanicIcon.png
+dateAdded: 2021-12-20 15:28:00
